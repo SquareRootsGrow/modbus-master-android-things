@@ -10,7 +10,7 @@ import com.squarerootsgrow.modbusmaster.ModbusFunctionCodes.WRITE_SINGLE_COIL
 import com.squarerootsgrow.modbusmaster.ModbusFunctionCodes.WRITE_SINGLE_HOLDING_REGISTER
 import kotlin.experimental.and
 
-sealed class ModbusRequest<T : ModbusData>(val slaveId: Byte, val funcCode: Byte, val address: Short) {
+sealed class ModbusRequest<T : ModbusData>(val slaveId: Byte, val funcCode: Byte, val startAddress: Short) {
 
     /**
      * Constructs a Modbus request
@@ -62,7 +62,7 @@ sealed class ModbusRequest<T : ModbusData>(val slaveId: Byte, val funcCode: Byte
             // ensure that the dataAddress written matches the intended address
             val dataAddress: Short = Word(hiByte = response[2], loByte = response[3]).toShort()
 
-            if (dataAddress != address) return ModbusResponse.Error(ModbusError.IncorrectDataAddress())
+            if (dataAddress != startAddress) return ModbusResponse.Error(ModbusError.IncorrectDataAddress())
 
             return parseData(response.sliceArray(4 until 6)) // Write response data is only ever 2 bytes long
         }
@@ -71,20 +71,20 @@ sealed class ModbusRequest<T : ModbusData>(val slaveId: Byte, val funcCode: Byte
     abstract class AbstractReadRequest<T : ModbusData>(
             slaveId: Byte,
             funcCode: Byte,
-            address: Short,
-            val numAddressesToRead: Short
-    ) : ModbusRequest<T>(slaveId, funcCode, address) {
+            startAddress: Short,
+            val registerCount: Short
+    ) : ModbusRequest<T>(slaveId, funcCode, startAddress) {
         override fun constructMessage(): ByteArray {
-            val addressBytes = address.toWord()
-            val numToReadBytes = numAddressesToRead.toWord()
+            val startAddressBytes = startAddress.toWord()
+            val registerCountBytes = registerCount.toWord()
             return addCrc(
                     byteArrayOf(
                             slaveId,
                             funcCode,
-                            addressBytes.hiByte,
-                            addressBytes.loByte,
-                            numToReadBytes.hiByte,
-                            numToReadBytes.loByte
+                            startAddressBytes.hiByte,
+                            startAddressBytes.loByte,
+                            registerCountBytes.hiByte,
+                            registerCountBytes.loByte
                     )
             )
         }
@@ -92,47 +92,47 @@ sealed class ModbusRequest<T : ModbusData>(val slaveId: Byte, val funcCode: Byte
 
     class ReadCoils(
             slaveId: Byte,
-            coilAddress: Short,
-            numCoilsToRead: Short
-    ) : AbstractReadRequest<ModbusData.ReadCoils>(slaveId, READ_COILS, coilAddress, numCoilsToRead) {
+            startAddress: Short,
+            registerCount: Short
+    ) : AbstractReadRequest<ModbusData.ReadCoils>(slaveId, READ_COILS, startAddress, registerCount) {
 
         override fun parseData(data: ByteArray): ModbusResponse<ModbusData.ReadCoils> {
             // each coil value is one bit, 1 byte holds up to 8 coil values
-            val expectedNumBytes = Math.ceil(numAddressesToRead.toDouble() / 8).toInt()
+            val expectedNumBytes = Math.ceil(registerCount.toDouble() / 8).toInt()
             return if (expectedNumBytes != data.size) {
                 ModbusResponse.Error(ModbusError.IncorrectData())
             } else {
-                ModbusResponse.Success(ModbusData.ReadCoils(numAddressesToRead, data))
+                ModbusResponse.Success(ModbusData.ReadCoils(registerCount, data))
             }
         }
     }
 
     class ReadDiscreteInputs(
             slaveId: Byte,
-            inputAddress: Short,
-            numInputsToRead: Short
-    ) : AbstractReadRequest<ModbusData.ReadDiscreteInputs>(slaveId, READ_DISCRETE_INPUTS, inputAddress, numInputsToRead) {
+            startAddress: Short,
+            registerCount: Short
+    ) : AbstractReadRequest<ModbusData.ReadDiscreteInputs>(slaveId, READ_DISCRETE_INPUTS, startAddress, registerCount) {
 
         override fun parseData(data: ByteArray): ModbusResponse<ModbusData.ReadDiscreteInputs> {
             // each coil value is one bit, 1 byte holds up to 8 coil values
-            val expectedNumBytes = Math.ceil(numAddressesToRead.toDouble() / 8).toInt()
+            val expectedNumBytes = Math.ceil(registerCount.toDouble() / 8).toInt()
             return if (expectedNumBytes != data.size) {
                 ModbusResponse.Error(ModbusError.IncorrectData())
             } else {
-                ModbusResponse.Success(ModbusData.ReadDiscreteInputs(numAddressesToRead, data))
+                ModbusResponse.Success(ModbusData.ReadDiscreteInputs(registerCount, data))
             }
         }
     }
 
     class ReadInputRegisters(
             slaveId: Byte,
-            inputAddress: Short,
-            numInputsToRead: Short
-    ) : AbstractReadRequest<ModbusData.ReadInputRegisters>(slaveId, READ_INPUT_REGISTERS, inputAddress, numInputsToRead) {
+            startAddress: Short,
+            registerCount: Short
+    ) : AbstractReadRequest<ModbusData.ReadInputRegisters>(slaveId, READ_INPUT_REGISTERS, startAddress, registerCount) {
 
         override fun parseData(data: ByteArray): ModbusResponse<ModbusData.ReadInputRegisters> {
             // Data should be 2 bytes per address
-            return if (data.size != numAddressesToRead * 2) {
+            return if (data.size != registerCount * 2) {
                 ModbusResponse.Error(ModbusError.IncorrectData())
             } else {
                 ModbusResponse.Success(ModbusData.ReadInputRegisters(data))
@@ -142,13 +142,13 @@ sealed class ModbusRequest<T : ModbusData>(val slaveId: Byte, val funcCode: Byte
 
     class ReadHoldingRegisters(
             slaveId: Byte,
-            registerAddress: Short,
-            numAddressesToRead: Short
-    ) : AbstractReadRequest<ModbusData.ReadHoldingRegisters>(slaveId, READ_HOLDING_REGISTERS, registerAddress, numAddressesToRead) {
+            startAddress: Short,
+            registerCount: Short
+    ) : AbstractReadRequest<ModbusData.ReadHoldingRegisters>(slaveId, READ_HOLDING_REGISTERS, startAddress, registerCount) {
 
         override fun parseData(data: ByteArray): ModbusResponse<ModbusData.ReadHoldingRegisters> {
             // Data should be 2 bytes per address
-            return if (data.size != numAddressesToRead * 2) {
+            return if (data.size != registerCount * 2) {
                 ModbusResponse.Error(ModbusError.IncorrectData())
             } else {
                 ModbusResponse.Success(ModbusData.ReadHoldingRegisters(data))
@@ -158,19 +158,19 @@ sealed class ModbusRequest<T : ModbusData>(val slaveId: Byte, val funcCode: Byte
 
     class WriteCoil(
             slaveId: Byte,
-            coilAddress: Short,
+            startAddress: Short,
             private val state: Boolean
-    ) : ModbusRequest<ModbusData.WriteCoil>(slaveId, WRITE_SINGLE_COIL, coilAddress) {
+    ) : ModbusRequest<ModbusData.WriteCoil>(slaveId, WRITE_SINGLE_COIL, startAddress) {
 
         override fun constructMessage(): ByteArray {
-            val coilAddressBytes = address.toWord()
+            val startAddressBytes = startAddress.toWord()
 
             return addCrc(
                     byteArrayOf(
                             slaveId,
                             WRITE_SINGLE_COIL,
-                            coilAddressBytes.hiByte,
-                            coilAddressBytes.loByte,
+                            startAddressBytes.hiByte,
+                            startAddressBytes.loByte,
                             (if (state) 0xFF else 0x00).toByte(),
                             0x00
                     )
@@ -189,28 +189,28 @@ sealed class ModbusRequest<T : ModbusData>(val slaveId: Byte, val funcCode: Byte
 
     class WriteCoils(
             slaveId: Byte,
-            firstCoilAddress: Short,
-            private val numCoils: Short,
+            startAddress: Short,
+            private val registerCount: Short,
             private val coilStates: BooleanArray
-    ) : ModbusRequest<ModbusData.WriteCoils>(slaveId, WRITE_MULTIPLE_COILS, firstCoilAddress) {
+    ) : ModbusRequest<ModbusData.WriteCoils>(slaveId, WRITE_MULTIPLE_COILS, startAddress) {
 
         override fun constructMessage(): ByteArray {
-            if (numCoils.toInt() != coilStates.size) {
+            if (registerCount.toInt() != coilStates.size) {
                 throw IllegalStateException("coilStates array length must equal the number of coils being written!")
             }
 
             val coilStateBitMask = coilStates.toBitMaskByteArray()
             val numBytesData: Byte = coilStateBitMask.size.toByte()
-            val firstCoilAddressBytes = address.toWord()
-            val numCoilsBytes = numCoils.toWord()
+            val startAddressBytes = startAddress.toWord()
+            val registerCountBytes = registerCount.toWord()
 
             val message = byteArrayOf(
                     slaveId,
                     ModbusFunctionCodes.WRITE_MULTIPLE_COILS,
-                    firstCoilAddressBytes.hiByte,
-                    firstCoilAddressBytes.loByte,
-                    numCoilsBytes.hiByte,
-                    numCoilsBytes.loByte,
+                    startAddressBytes.hiByte,
+                    startAddressBytes.loByte,
+                    registerCountBytes.hiByte,
+                    registerCountBytes.loByte,
                     numBytesData
             )
 
@@ -219,7 +219,7 @@ sealed class ModbusRequest<T : ModbusData>(val slaveId: Byte, val funcCode: Byte
 
         override fun parseData(data: ByteArray): ModbusResponse<ModbusData.WriteCoils> {
             val numCoilsWritten = Word(hiByte = data[0], loByte = data[1]).toShort()
-            return if (numCoilsWritten != numCoils) {
+            return if (numCoilsWritten != registerCount) {
                 ModbusResponse.Error(ModbusError.IncorrectData())
             } else {
                 ModbusResponse.Success(ModbusData.WriteCoils())
@@ -229,18 +229,18 @@ sealed class ModbusRequest<T : ModbusData>(val slaveId: Byte, val funcCode: Byte
 
     class WriteHoldingRegister(
             slaveId: Byte,
-            registerAddress: Short,
+            startAddress: Short,
             private val value: Short
-    ) : ModbusRequest<ModbusData.WriteHoldingRegister>(slaveId, WRITE_SINGLE_HOLDING_REGISTER, registerAddress) {
+    ) : ModbusRequest<ModbusData.WriteHoldingRegister>(slaveId, WRITE_SINGLE_HOLDING_REGISTER, startAddress) {
         override fun constructMessage(): ByteArray {
-            val registerAddressBytes = address.toWord()
+            val startAddressBytes = startAddress.toWord()
             val valueBytes = value.toWord()
             return addCrc(
                     byteArrayOf(
                             slaveId,
                             WRITE_SINGLE_HOLDING_REGISTER,
-                            registerAddressBytes.hiByte,
-                            registerAddressBytes.loByte,
+                            startAddressBytes.hiByte,
+                            startAddressBytes.loByte,
                             valueBytes.hiByte,
                             valueBytes.loByte
                     )
@@ -259,26 +259,26 @@ sealed class ModbusRequest<T : ModbusData>(val slaveId: Byte, val funcCode: Byte
 
     class WriteHoldingRegisters(
             slaveId: Byte,
-            firstRegisterAddress: Short,
-            private val numRegisters: Short,
+            startAddress: Short,
+            private val registerCount: Short,
             private val data: ShortArray
-    ) : ModbusRequest<ModbusData.WriteHoldingRegisters>(slaveId, WRITE_MULTIPLE_HOLDING_REGISTERS, firstRegisterAddress) {
+    ) : ModbusRequest<ModbusData.WriteHoldingRegisters>(slaveId, WRITE_MULTIPLE_HOLDING_REGISTERS, startAddress) {
         override fun constructMessage(): ByteArray {
-            if (numRegisters.toInt() != data.size) {
+            if (registerCount.toInt() != data.size) {
                 throw IllegalStateException("data array length must equal the number of registers being written!")
             }
 
-            val numBytesData: Byte = (numRegisters * 2).toByte() // two bytes per register value
-            val firstCoilAddressBytes = address.toWord()
-            val numCoilsBytes = numRegisters.toWord()
+            val numBytesData: Byte = (registerCount * 2).toByte() // two bytes per register value
+            val startAddressBytes = startAddress.toWord()
+            val registerCountBytes = registerCount.toWord()
 
             val message = byteArrayOf(
                     slaveId,
                     ModbusFunctionCodes.WRITE_MULTIPLE_HOLDING_REGISTERS,
-                    firstCoilAddressBytes.hiByte,
-                    firstCoilAddressBytes.loByte,
-                    numCoilsBytes.hiByte,
-                    numCoilsBytes.loByte,
+                    startAddressBytes.hiByte,
+                    startAddressBytes.loByte,
+                    registerCountBytes.hiByte,
+                    registerCountBytes.loByte,
                     numBytesData
             )
 
@@ -293,7 +293,7 @@ sealed class ModbusRequest<T : ModbusData>(val slaveId: Byte, val funcCode: Byte
 
         override fun parseData(data: ByteArray): ModbusResponse<ModbusData.WriteHoldingRegisters> {
             val numRegistersWritten = Word(hiByte = data[0], loByte = data[1]).toShort()
-            return if (numRegistersWritten != numRegisters) {
+            return if (numRegistersWritten != registerCount) {
                 ModbusResponse.Error(ModbusError.IncorrectData())
             } else {
                 ModbusResponse.Success(ModbusData.WriteHoldingRegisters())

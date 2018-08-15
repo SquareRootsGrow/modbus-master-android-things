@@ -3,6 +3,7 @@ package com.squarerootsgrow.modbusmaster
 import com.google.android.things.pio.Gpio
 import com.google.android.things.pio.PeripheralManager
 import com.google.android.things.pio.UartDevice
+import com.google.android.things.pio.UartDevice.FLUSH_IN_OUT
 
 
 private const val READ_BUFFER_SIZE = 100
@@ -28,7 +29,7 @@ private const val BUFFER_READ_DELAY = 15.toLong()
  *
  * @param timeoutMillis the UART response timeout, in milliseconds, defaulted to 1000 milliseconds
  */
-class ModbusMasterClient(
+class ModbusMaster(
         uartDeviceName: String = "MINIUART",
         txControlPinName: String? = null,
         baudRate: Int = 9600,
